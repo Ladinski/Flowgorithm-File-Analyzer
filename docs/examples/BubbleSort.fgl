@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<flowgorithm fileversion="3.0">
+  <information>
+    <name>Bubble Sort Algorithm</name>
+    <author>Student_001</author>
+    <date>2024-01-15</date>
+    <description>Implementation of Bubble Sort Algorithm</description>
+    <version>1.0</version>
+    <created>2024-01-15T09:30:00</created>
+    <modified>2024-01-15T10:15:00</modified>
+  </information>
+  <symbols>
+    <symbol>
+      <name>array</name>
+      <type>Array</type>
+      <value>[]</value>
+    </symbol>
+    <symbol>
+      <name>n</name>
+      <type>Integer</type>
+      <value>0</value>
+    </symbol>
+    <symbol>
+      <name>i</name>
+      <type>Integer</type>
+      <value>0</value>
+    </symbol>
+    <symbol>
+      <name>j</name>
+      <type>Integer</type>
+      <value>0</value>
+    </symbol>
+    <symbol>
+      <name>temp</name>
+      <type>Integer</type>
+      <value>0</value>
+    </symbol>
+  </symbols>
+  <flowchart>
+    <start x="100" y="10">
+      <text>Start</text>
+    </start>
+    <process x="100" y="60">
+      <text>Read array n values into array</text>
+    </process>
+    <process x="100" y="120">
+      <text>n = length of array</text>
+    </process>
+    <process x="100" y="180">
+      <text>i = 0</text>
+    </process>
+    <loop x="100" y="240">
+      <text>i less than n-1</text>
+      <xa>50</xa>
+      <ya>290</ya>
+    </loop>
+    <process x="50" y="340">
+      <text>j = 0</text>
+    </process>
+    <loop x="50" y="400">
+      <text>j less than n-i-1</text>
+      <xa>25</xa>
+      <ya>450</ya>
+    </loop>
+    <decision x="25" y="500">
+      <text>array[j] > array[j+1]</text>
+      <yes>25</yes>
+      <no>75</no>
+      <xa>25</xa>
+      <ya>550</ya>
+    </decision>
+    <process x="25" y="600">
+      <text>temp = array[j]
+array[j] = array[j+1]
+array[j+1] = temp</text>
+    </process>
+    <process x="75" y="600">
+      <text>j = j + 1</text>
+    </process>
+    <end x="100" y="700">
+      <text>Display sorted array</text>
+    </end>
+  </flowchart>
+</flowgorithm>
