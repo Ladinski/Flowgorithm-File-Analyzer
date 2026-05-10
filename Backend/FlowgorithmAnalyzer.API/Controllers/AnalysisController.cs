@@ -544,7 +544,7 @@ public class AnalysisController : ControllerBase
         var parts = nameWithoutExtension
             .Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        var studentId = parts.Length > 0 ? parts[0] : "Unknown";
+        var studentId = parts.Length > 0 ? NormalizeStudentId(parts[0]) : "Unknown";
         var studentName = parts.Length switch
         {
             >= 3 => $"{parts[1]} {parts[2]}",
@@ -553,6 +553,19 @@ public class AnalysisController : ControllerBase
         };
 
         return (studentId, studentName);
+    }
+
+    private static string NormalizeStudentId(string rawStudentId)
+    {
+        var trimmed = rawStudentId.Trim();
+        if (trimmed.StartsWith("ID", StringComparison.OrdinalIgnoreCase) && trimmed.Length > 2)
+        {
+            var idWithoutPrefix = trimmed[2..];
+            if (idWithoutPrefix.All(char.IsDigit))
+                return idWithoutPrefix;
+        }
+
+        return trimmed;
     }
 
     private static ForensicAnalysis? CreateForensicAnalysis(FlowgorithmData flowgData)
@@ -602,6 +615,10 @@ public class AnalysisController : ControllerBase
                 else if (editingMinutes < 10 && flowgData.ComplexityScore >= 60)
                 {
                     findings.Add($"{flowgData.ComplexityScore} complexity recorded in {editingMinutes:F1} minutes");
+                }
+                else if (editingMinutes < 15 && flowgData.ComplexityScore >= 40)
+                {
+                    findings.Add($"{flowgData.ComplexityScore} complexity has a short {editingMinutes:F1} minute editing window");
                 }
                 else if (editingMinutes < 20 && flowgData.ComplexityScore >= 90)
                 {

@@ -188,6 +188,16 @@ public class PlagiarismDetectionService : IPlagiarismDetectionService
                     Evidence = [$"{editingEvidence}; recorded editing time: {FormatDuration(editingMinutes)}"]
                 });
             }
+            else if (editingMinutes < 15 && solution.ComplexityScore >= 40)
+            {
+                indicators.Add(new RiskIndicator
+                {
+                    Type = "METADATA_REVIEW",
+                    Severity = 2,
+                    Description = "Moderately complex solution has a short recorded editing window",
+                    Evidence = [$"{editingEvidence}; recorded editing time: {FormatDuration(editingMinutes)}"]
+                });
+            }
             else if (editingMinutes < 20 && solution.ComplexityScore >= 90)
             {
                 indicators.Add(new RiskIndicator

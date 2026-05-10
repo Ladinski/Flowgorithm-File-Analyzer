@@ -96,6 +96,30 @@ function AnalysisResults() {
     return date.toLocaleString();
   };
 
+  const formatEditingDuration = (createdValue: string, modifiedValue: string) => {
+    const created = new Date(createdValue);
+    const modified = new Date(modifiedValue);
+
+    if (
+      Number.isNaN(created.getTime()) ||
+      Number.isNaN(modified.getTime()) ||
+      created.getFullYear() <= 1 ||
+      modified.getFullYear() <= 1 ||
+      modified < created
+    ) {
+      return 'Unavailable';
+    }
+
+    const totalSeconds = Math.round((modified.getTime() - created.getTime()) / 1000);
+    if (totalSeconds < 60) {
+      return `${totalSeconds} seconds`;
+    }
+
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds === 0 ? `${minutes} minutes` : `${minutes} minutes ${seconds} seconds`;
+  };
+
   const formatRiskType = (type: string) => {
     const labels: Record<string, string> = {
       DUPLICATE_DECLARATION: 'Duplicate Declaration',
@@ -232,6 +256,13 @@ function AnalysisResults() {
                     </p>
                     <p>
                       <strong>Modified:</strong> {formatMetadataDate(result.forensicAnalysis.fileModifiedDate)}
+                    </p>
+                    <p>
+                      <strong>Recorded editing time:</strong>{' '}
+                      {formatEditingDuration(
+                        result.forensicAnalysis.fileCreatedDate,
+                        result.forensicAnalysis.fileModifiedDate
+                      )}
                     </p>
                     <p>
                       <strong>Author:</strong> {result.forensicAnalysis.author || 'Missing'}

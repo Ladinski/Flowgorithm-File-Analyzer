@@ -1,5 +1,7 @@
 using System.Xml;
 using System.Xml.XPath;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace FlowgorithmAnalyzer.Core.Services;
 
@@ -57,10 +59,10 @@ public class FlowgorithmParser : IFlowgorithmParser
             data.Title = infoNode.SelectSingleNode("title")?.InnerText;
             data.Description = infoNode.SelectSingleNode("description")?.InnerText;
             
-            if (DateTime.TryParse(infoNode.SelectSingleNode("created")?.InnerText ?? "", out var created))
+            if (TryParseFlowgorithmDate(infoNode.SelectSingleNode("created")?.InnerText, out var created))
                 data.CreatedDate = created;
             
-            if (DateTime.TryParse(infoNode.SelectSingleNode("modified")?.InnerText ?? "", out var modified))
+            if (TryParseFlowgorithmDate(infoNode.SelectSingleNode("modified")?.InnerText, out var modified))
                 data.ModifiedDate = modified;
         }
         else
@@ -163,15 +165,71 @@ public class FlowgorithmParser : IFlowgorithmParser
                     data.Description = value;
                     break;
                 case "created":
-                    if (DateTime.TryParse(value, out var created))
+                    if (TryParseFlowgorithmDate(value, out var created))
                         data.CreatedDate = created;
+                    break;
+                case "edited":
+                    if (TryParseFlowgorithmDate(value, out var edited))
+                        data.ModifiedDate = edited;
                     break;
                 case "saved":
                 case "modified":
-                    if (DateTime.TryParse(value, out var modified))
+                    if (TryParseFlowgorithmDate(value, out var modified))
                         data.ModifiedDate = modified;
                     break;
             }
+        }
+    }
+
+    private static bool TryParseFlowgorithmDate(string? value, out DateTime date)
+    {
+        date = default;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var candidates = new List<string> { value.Trim() };
+
+        if (TryDecodeBase64(value, out var decoded))
+            candidates.Insert(0, decoded);
+
+        foreach (var candidate in candidates)
+        {
+            if (DateTime.TryParse(candidate, out date))
+                return true;
+
+            var timestampMatch = Regex.Match(candidate, @"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}");
+            if (timestampMatch.Success && DateTime.TryParse(timestampMatch.Value, out date))
+                return true;
+
+            var parts = candidate.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var i = 0; i < parts.Length - 1; i++)
+            {
+                var combined = $"{parts[i]} {parts[i + 1]}";
+                if (Regex.IsMatch(combined, @"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}") &&
+                    DateTime.TryParse(combined, out date))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryDecodeBase64(string value, out string decoded)
+    {
+        decoded = "";
+
+        try
+        {
+            var bytes = Convert.FromBase64String(value.Trim());
+            decoded = Encoding.UTF8.GetString(bytes);
+            return !string.IsNullOrWhiteSpace(decoded);
+        }
+        catch
+        {
+            return false;
         }
     }
 
