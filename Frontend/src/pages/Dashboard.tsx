@@ -55,12 +55,33 @@ function Dashboard() {
     );
   }
 
-  const riskData = Object.entries(dashboardData.riskLevelDistribution).map(([name, value]) => ({
-    name,
-    value,
-  }));
+  const riskData = Object.entries(dashboardData.riskLevelDistribution)
+    .filter(([, value]) => value > 0)
+    .map(([name, value]) => ({
+      name,
+      value,
+    }));
 
-  const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#dc2626'];
+  const COLORS: Record<string, string> = {
+    Low: '#10b981',
+    Medium: '#f59e0b',
+    High: '#ef4444',
+    Critical: '#dc2626',
+  };
+
+  const formatRiskType = (type: string) => {
+    const labels: Record<string, string> = {
+      DUPLICATE_DECLARATION: 'Duplicate Declaration',
+      REPETITION_PATTERN: 'Repetition Pattern',
+      SIMILARITY_MATCH: 'Similarity Match',
+      HIGH_SIMILARITY_MATCH: 'High Similarity Match',
+      METADATA_REVIEW: 'Metadata Review',
+      METADATA_ANOMALY: 'Metadata Anomaly',
+      GPT_GENERATED: 'AI-Style Pattern',
+    };
+
+    return labels[type] ?? type.replace(/_/g, ' ');
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -115,8 +136,8 @@ function Dashboard() {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {riskData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                {riskData.map((entry) => (
+                  <Cell key={`cell-${entry.name}`} fill={COLORS[entry.name] ?? '#6b7280'} />
                 ))}
               </Pie>
               <Tooltip />
@@ -165,7 +186,7 @@ function Dashboard() {
                     <td className="py-3 px-4 text-gray-700">{caseItem.assignmentName}</td>
                     <td className="py-3 px-4">
                       <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-semibold">
-                        {caseItem.primaryRiskFactor}
+                        {formatRiskType(caseItem.primaryRiskFactor)}
                       </span>
                     </td>
                     <td className="py-3 px-4">

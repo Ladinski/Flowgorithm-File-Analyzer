@@ -186,7 +186,7 @@ function StudentTracking() {
                             }`}>
                               {assignment.plagiarismScore.toFixed(1)}%
                             </td>
-                            <td className="py-2 px-3 text-center">{assignment.complexity}</td>
+                            <td className="py-2 px-3 text-center">{assignment.complexityScore}</td>
                             <td className="py-2 px-3 text-center">
                               {assignment.isFlagged ? (
                                 <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">

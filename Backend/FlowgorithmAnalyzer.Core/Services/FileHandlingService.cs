@@ -20,12 +20,12 @@ public class FileHandlingService : IFileHandlingService
             using var ms = new MemoryStream(zipContent);
             using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
 
-            foreach (var entry in archive.Entries.Where(e => IsFlowgorithmFile(e.Name)))
+            foreach (var entry in archive.Entries.Where(e => !IsDirectoryEntry(e) && IsFlowgorithmFile(e.Name)))
             {
                 using var entryStream = entry.Open();
                 using var memoryStream = new MemoryStream();
                 await entryStream.CopyToAsync(memoryStream);
-                files.Add((entry.Name, memoryStream.ToArray()));
+                files.Add((entry.FullName, memoryStream.ToArray()));
             }
         }
         catch (Exception ex)
@@ -53,6 +53,11 @@ public class FileHandlingService : IFileHandlingService
         return extension.Equals(".fprg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".frpg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".fgl", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDirectoryEntry(ZipArchiveEntry entry)
+    {
+        return string.IsNullOrWhiteSpace(entry.Name);
     }
 
     public byte[]? ReadFileAsBytes(string filePath)

@@ -270,7 +270,7 @@ function UploadPage() {
                     {bulkForm.file ? bulkForm.file.name : 'Drag or click to select ZIP file'}
                   </p>
                   <p className="text-sm text-gray-600 mt-2">
-                    Contains multiple .fprg, .frpg, or .fgl files with naming: StudentID_Name_file.fprg
+                    May contain folders. Files should be named like ID1234_John_Doe_solution.fprg
                   </p>
                 </div>
               </div>

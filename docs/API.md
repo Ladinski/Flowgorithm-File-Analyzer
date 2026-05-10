@@ -45,6 +45,14 @@ Content-Type: multipart/form-data
 - semester: string (optional)
 ```
 
+The ZIP may contain nested folders. Each Flowgorithm file is discovered recursively from the archive entries. Student data is parsed from file names in this format:
+
+```
+ID1234_John_Doe_solution.fprg
+```
+
+This creates or reuses student ID `ID1234` with student name `John Doe`.
+
 Response: Array of analysis results
 
 ### Analysis

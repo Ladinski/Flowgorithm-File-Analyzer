@@ -9,9 +9,6 @@ public interface IPlagiarismDetectionService
 
 public class PlagiarismDetectionService : IPlagiarismDetectionService
 {
-    private const double HashMatchThreshold = 0.7;
-    private const double StructureSimilarityThreshold = 0.75;
-
     public PlagiarismAnalysis AnalyzeSolution(FlowgorithmData solution)
     {
         var analysis = new PlagiarismAnalysis
@@ -119,66 +116,124 @@ public class PlagiarismDetectionService : IPlagiarismDetectionService
         {
             analysis.RiskIndicators.Add(new RiskIndicator
             {
-                Type = "COPY_PASTE",
+                Type = "DUPLICATE_DECLARATION",
                 Severity = 2,
-                Description = "Duplicate variable declarations found",
+                Description = "Same variable declared more than once",
                 Evidence = identicalVars.Select(g => $"{g.Key} (x{g.Count()})").ToList()
             });
         }
 
-        // Check for repeated element patterns
-        var elementSequence = string.Join("->", solution.Elements.Select(e => e.Type));
-        var repeatedPatterns = FindRepeatedPatterns(elementSequence, 3);
+        var repeatedPatterns = FindRepeatedElementPatterns(solution.Elements);
+        var reviewablePatterns = repeatedPatterns
+            .Where(p => !p.IsInputOnly)
+            .ToList();
+        var repeatedElementCount = reviewablePatterns.Sum(p => p.WindowSize * (p.Count - 1));
 
-        if (repeatedPatterns.Count > solution.Elements.Count * 0.5)
+        if (reviewablePatterns.Count > 0 &&
+            (reviewablePatterns.Count >= 2 || repeatedElementCount >= solution.Elements.Count * 0.35))
         {
             analysis.RiskIndicators.Add(new RiskIndicator
             {
-                Type = "COPY_PASTE",
-                Severity = 3,
-                Description = "Excessive repetition of identical code blocks",
-                Evidence = repeatedPatterns.Take(5).ToList()
+                Type = "REPETITION_PATTERN",
+                Severity = 2,
+                Description = "Repeated identical non-input flowchart blocks",
+                Evidence = reviewablePatterns
+                    .Take(5)
+                    .Select(p => $"{p.Sequence} repeated {p.Count} times")
+                    .ToList()
             });
         }
     }
 
     private void CheckMetadataAnomalies(FlowgorithmData solution, PlagiarismAnalysis analysis)
     {
-        var anomalies = new List<string>();
+        var indicators = new List<RiskIndicator>();
+        var hasCreatedDate = solution.CreatedDate != default;
+        var hasModifiedDate = solution.ModifiedDate != default;
+        var hasBothDates = hasCreatedDate && hasModifiedDate;
 
-        // Check creation vs modification time gap
-        if (solution.ModifiedDate != default &&
-            solution.CreatedDate != default &&
-            solution.ModifiedDate == solution.CreatedDate)
+        if (hasBothDates && solution.ModifiedDate < solution.CreatedDate)
         {
-            anomalies.Add("No modification history - file never edited after creation");
-        }
-
-        // Check for suspiciously short creation time
-        if (solution.ModifiedDate != default &&
-            solution.CreatedDate != default &&
-            (solution.ModifiedDate - solution.CreatedDate).TotalMinutes < 5 &&
-            solution.ElementCount > 15)
-        {
-            anomalies.Add("Complex solution created and completed in under 5 minutes");
-        }
-
-        // Check author field
-        if (string.IsNullOrEmpty(solution.Author) && solution.ElementCount > 10)
-        {
-            anomalies.Add("Missing author information in metadata");
-        }
-
-        if (anomalies.Count > 0)
-        {
-            analysis.RiskIndicators.Add(new RiskIndicator
+            indicators.Add(new RiskIndicator
             {
                 Type = "METADATA_ANOMALY",
-                Severity = 2,
-                Description = "Suspicious metadata patterns detected",
-                Evidence = anomalies
+                Severity = 3,
+                Description = "File modification time is before creation time",
+                Evidence = [$"Created: {FormatDate(solution.CreatedDate)}; modified: {FormatDate(solution.ModifiedDate)}"]
             });
         }
+
+        if (hasBothDates && solution.ModifiedDate >= solution.CreatedDate)
+        {
+            var editingMinutes = (solution.ModifiedDate - solution.CreatedDate).TotalMinutes;
+            var editingEvidence = $"{solution.ElementCount} elements, complexity {solution.ComplexityScore}, created {FormatDate(solution.CreatedDate)}, last saved {FormatDate(solution.ModifiedDate)}";
+
+            if (editingMinutes < 1 && solution.ElementCount > 10)
+            {
+                indicators.Add(new RiskIndicator
+                {
+                    Type = "METADATA_ANOMALY",
+                    Severity = 4,
+                    Description = "Non-trivial file has almost no recorded editing time",
+                    Evidence = [$"{editingEvidence}; recorded editing time: {FormatDuration(editingMinutes)}"]
+                });
+            }
+            else if (editingMinutes < 10 && solution.ComplexityScore >= 60)
+            {
+                indicators.Add(new RiskIndicator
+                {
+                    Type = "METADATA_REVIEW",
+                    Severity = 3,
+                    Description = "Complex solution was created and last saved very quickly",
+                    Evidence = [$"{editingEvidence}; recorded editing time: {FormatDuration(editingMinutes)}"]
+                });
+            }
+            else if (editingMinutes < 20 && solution.ComplexityScore >= 90)
+            {
+                indicators.Add(new RiskIndicator
+                {
+                    Type = "METADATA_REVIEW",
+                    Severity = 2,
+                    Description = "Very complex solution has a short recorded editing window",
+                    Evidence = [$"{editingEvidence}; recorded editing time: {FormatDuration(editingMinutes)}"]
+                });
+            }
+
+            if (solution.ModifiedDate == solution.CreatedDate && solution.ElementCount > 5)
+            {
+                indicators.Add(new RiskIndicator
+                {
+                    Type = "METADATA_REVIEW",
+                    Severity = 2,
+                    Description = "File shows no time gap between creation and last save",
+                    Evidence = [$"{editingEvidence}; this can happen when a finished file is copied or exported"]
+                });
+            }
+        }
+
+        if (string.IsNullOrEmpty(solution.Author) && solution.ElementCount > 10)
+        {
+            indicators.Add(new RiskIndicator
+            {
+                Type = "METADATA_REVIEW",
+                Severity = 1,
+                Description = "Missing author information in file metadata",
+                Evidence = ["The Flowgorithm metadata does not identify the file author"]
+            });
+        }
+
+        if (!hasCreatedDate && !hasModifiedDate)
+        {
+            indicators.Add(new RiskIndicator
+            {
+                Type = "METADATA_REVIEW",
+                Severity = 1,
+                Description = "File is missing timestamp metadata",
+                Evidence = ["The file does not include created or modified timestamp metadata"]
+            });
+        }
+
+        analysis.RiskIndicators.AddRange(indicators);
     }
 
     private double CompareHashes(List<string> hashes1, List<string> hashes2)
@@ -282,19 +337,87 @@ public class PlagiarismDetectionService : IPlagiarismDetectionService
             || name.StartsWith("value");
     }
 
-    private List<string> FindRepeatedPatterns(string sequence, int minLength)
+    private List<RepeatedElementPattern> FindRepeatedElementPatterns(List<FlowchartElement> elements)
     {
-        var patterns = new List<string>();
-        for (int i = 0; i < sequence.Length - minLength; i++)
+        var repeatedPatterns = new List<RepeatedElementPattern>();
+
+        if (elements.Count < 6)
+            return repeatedPatterns;
+
+        for (var windowSize = 3; windowSize <= Math.Min(5, elements.Count / 2); windowSize++)
         {
-            var pattern = sequence.Substring(i, minLength);
-            if (sequence.IndexOf(pattern) != sequence.LastIndexOf(pattern))
+            var windows = new Dictionary<string, RepeatedElementPattern>();
+
+            for (var i = 0; i <= elements.Count - windowSize; i++)
             {
-                if (!patterns.Contains(pattern))
-                    patterns.Add(pattern);
+                var window = elements.Skip(i).Take(windowSize).ToList();
+                var key = string.Join("||", window.Select(GetComparableElementText));
+
+                if (!windows.TryGetValue(key, out var pattern))
+                {
+                    pattern = new RepeatedElementPattern
+                    {
+                        ComparableSequence = key,
+                        Sequence = string.Join(" -> ", window.Select(GetReadableElementText)),
+                        IsInputOnly = window.All(e => e.Type.Equals("input", StringComparison.OrdinalIgnoreCase)),
+                        WindowSize = windowSize,
+                        Count = 0
+                    };
+                    windows[key] = pattern;
+                }
+
+                pattern.Count++;
             }
+
+            repeatedPatterns.AddRange(windows.Values.Where(p => p.Count > 1));
         }
-        return patterns;
+
+        return repeatedPatterns
+            .Where(pattern => !repeatedPatterns.Any(other =>
+                other.WindowSize > pattern.WindowSize &&
+                other.Count >= pattern.Count &&
+                other.ComparableSequence.Contains(pattern.ComparableSequence, StringComparison.Ordinal)))
+            .OrderByDescending(p => p.WindowSize * p.Count)
+            .ThenByDescending(p => p.Count)
+            .ToList();
+    }
+
+    private static string GetComparableElementText(FlowchartElement element)
+    {
+        return $"{element.Type}:{NormalizeElementContent(element.Content)}";
+    }
+
+    private static string GetReadableElementText(FlowchartElement element)
+    {
+        var content = NormalizeElementContent(element.Content);
+        if (string.IsNullOrWhiteSpace(content))
+            return element.Type;
+
+        return $"{element.Type} `{TrimForEvidence(content)}`";
+    }
+
+    private static string NormalizeElementContent(string content)
+    {
+        return string.Join(" ", content.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+    }
+
+    private static string TrimForEvidence(string content)
+    {
+        const int maxLength = 45;
+        return content.Length <= maxLength ? content : $"{content[..maxLength]}...";
+    }
+
+    private static string FormatDate(DateTime date)
+    {
+        return date.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    private static string FormatDuration(double minutes)
+    {
+        if (minutes < 1)
+            return "less than 1 minute";
+
+        return $"{minutes:F1} minutes";
     }
 
     private string ExtractLogicPattern(List<FlowchartElement> elements)
@@ -322,4 +445,13 @@ public class RiskIndicator
     public int Severity { get; set; } // 1-5
     public required string Description { get; set; }
     public List<string> Evidence { get; set; } = [];
+}
+
+internal class RepeatedElementPattern
+{
+    public required string ComparableSequence { get; set; }
+    public required string Sequence { get; set; }
+    public bool IsInputOnly { get; set; }
+    public int WindowSize { get; set; }
+    public int Count { get; set; }
 }

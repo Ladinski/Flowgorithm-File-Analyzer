@@ -28,6 +28,8 @@ interface AnalysisResult {
   forensicAnalysis: {
     fileCreatedDate: string;
     fileModifiedDate: string;
+    metadataAnomalies: number;
+    anomalyDetails: string[];
     suspiciousMetadata: boolean;
     author?: string;
   } | null;
@@ -57,7 +59,11 @@ function AnalysisResults() {
     if (filter === 'flagged') return result.plagiarismScore >= 60;
     if (filter === 'clean') return result.plagiarismScore < 60;
     if (filter === 'gpt') return result.riskIndicators.some((ri) => ri.type.toLowerCase().includes('gpt'));
-    if (filter === 'copied') return result.riskIndicators.some((ri) => ri.type.toLowerCase().includes('copied'));
+    if (filter === 'patterns') {
+      return result.riskIndicators.some((ri) =>
+        ['duplicate_declaration', 'repetition_pattern', 'similarity_match', 'high_similarity_match'].includes(ri.type.toLowerCase())
+      );
+    }
     return true;
   });
 
@@ -81,6 +87,29 @@ function AnalysisResults() {
     return <AlertTriangle className="w-5 h-5 text-red-600" />;
   };
 
+  const formatMetadataDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime()) || date.getFullYear() <= 1) {
+      return 'Missing';
+    }
+
+    return date.toLocaleString();
+  };
+
+  const formatRiskType = (type: string) => {
+    const labels: Record<string, string> = {
+      DUPLICATE_DECLARATION: 'Duplicate Declaration',
+      REPETITION_PATTERN: 'Repetition Pattern',
+      SIMILARITY_MATCH: 'Similarity Match',
+      HIGH_SIMILARITY_MATCH: 'High Similarity Match',
+      METADATA_REVIEW: 'Metadata Review',
+      METADATA_ANOMALY: 'Metadata Anomaly',
+      GPT_GENERATED: 'AI-Style Pattern',
+    };
+
+    return labels[type] ?? type.replace(/_/g, ' ');
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="mb-8">
@@ -90,7 +119,7 @@ function AnalysisResults() {
 
       {/* Filter Section */}
       <div className="mb-6 flex gap-2">
-        {['all', 'flagged', 'clean', 'gpt', 'copied'].map((f) => (
+        {['all', 'flagged', 'clean', 'gpt', 'patterns'].map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -100,7 +129,7 @@ function AnalysisResults() {
                 : 'bg-white text-gray-700 border-2 border-gray-300'
             }`}
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
+            {f === 'gpt' ? 'AI-Style' : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
       </div>
@@ -148,7 +177,7 @@ function AnalysisResults() {
                   <ul className="space-y-2">
                     {result.riskIndicators.map((indicator, idx) => (
                       <li key={idx} className="text-sm p-2 bg-white bg-opacity-60 rounded">
-                        <span className="font-semibold text-gray-900">{indicator.type}</span>
+                        <span className="font-semibold text-gray-900">{formatRiskType(indicator.type)}</span>
                         <p className="text-gray-700">{indicator.description}</p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {indicator.evidence.slice(0, 2).map((e, i) => (
@@ -192,11 +221,29 @@ function AnalysisResults() {
                   <h4 className="font-semibold text-gray-900 mb-1">Forensic Analysis</h4>
                   <p className="text-gray-700">
                     {result.forensicAnalysis.suspiciousMetadata ? (
-                      <span className="text-red-600">⚠️ Suspicious metadata detected</span>
+                      <span className="text-red-600">Metadata needs review</span>
                     ) : (
-                      <span className="text-green-600">✓ Metadata normal</span>
+                      <span className="text-green-600">Metadata normal</span>
                     )}
                   </p>
+                  <div className="mt-2 space-y-1 text-gray-700">
+                    <p>
+                      <strong>Created:</strong> {formatMetadataDate(result.forensicAnalysis.fileCreatedDate)}
+                    </p>
+                    <p>
+                      <strong>Modified:</strong> {formatMetadataDate(result.forensicAnalysis.fileModifiedDate)}
+                    </p>
+                    <p>
+                      <strong>Author:</strong> {result.forensicAnalysis.author || 'Missing'}
+                    </p>
+                  </div>
+                  {result.forensicAnalysis.anomalyDetails.length > 0 && (
+                    <ul className="mt-2 list-disc list-inside text-gray-700">
+                      {result.forensicAnalysis.anomalyDetails.map((detail, idx) => (
+                        <li key={idx}>{detail}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
             </div>

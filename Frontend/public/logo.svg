@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Flowgorithm Analyzer Pro logo">
+  <defs>
+    <linearGradient id="logo-gradient" x1="10" y1="54" x2="54" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#logo-gradient)"/>
+  <path d="M18 44V30" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M32 44V20" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M46 44V26" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M16 46H50" stroke="#dff8ff" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="46" cy="18" r="7" fill="#fff"/>
+  <path d="M43.5 18.2 45.4 20.1 49.5 15.9" fill="none" stroke="#0891b2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
