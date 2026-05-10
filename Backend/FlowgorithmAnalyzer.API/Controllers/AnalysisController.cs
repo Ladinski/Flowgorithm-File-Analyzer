@@ -108,18 +108,7 @@ public class AnalysisController : ControllerBase
                 analysisResult.RiskIndicators.Add(riskIndicator);
             }
 
-            // Add forensic analysis
-            if (flowgData.CreatedDate != default)
-            {
-                analysisResult.ForensicAnalysis = new ForensicAnalysis
-                {
-                    FileCreatedDate = flowgData.CreatedDate,
-                    FileModifiedDate = flowgData.ModifiedDate,
-                    Author = flowgData.Author,
-                    SuspiciousMetadata = (flowgData.ModifiedDate - flowgData.CreatedDate).TotalMinutes < 5 && 
-                                        flowgData.ElementCount > 15
-                };
-            }
+            analysisResult.ForensicAnalysis = CreateForensicAnalysis(flowgData);
 
             await AddCrossSubmissionFindingsAsync(analysisResult, flowgData, dto.AssignmentName, student.Id);
 
@@ -149,14 +138,21 @@ public class AnalysisController : ControllerBase
             var files = await _fileService.ExtractZipContentsAsync(
                 await ReadFileContent(dto.ZipFile));
 
+            if (files.Count == 0)
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Success = false,
+                    Message = "ZIP file does not contain any Flowgorithm files"
+                });
+            }
+
             var results = new List<AnalysisResultDto>();
 
             foreach (var (fileName, content) in files)
             {
-                // Parse filename to extract student info (e.g., "StudentID_Name_file.fgl")
-                var parts = Path.GetFileNameWithoutExtension(fileName).Split('_');
-                var studentId = parts.Length > 0 ? parts[0] : "Unknown";
-                var studentName = parts.Length > 1 ? parts[1] : "Unknown";
+                var originalFileName = Path.GetFileName(fileName);
+                var (studentId, studentName) = ParseStudentInfoFromFileName(originalFileName);
 
                 // Similar logic to single upload
                 var student = await _context.Students.FirstOrDefaultAsync(s => s.StudentId == studentId);
@@ -175,7 +171,7 @@ public class AnalysisController : ControllerBase
                 var submission = new Submission
                 {
                     StudentId = student.Id,
-                    FileName = fileName,
+                    FileName = originalFileName,
                     FilePath = $"uploads/{studentId}/{fileName}",
                     AssignmentName = dto.AssignmentName,
                     SubmissionDate = DateTime.UtcNow,
@@ -185,7 +181,7 @@ public class AnalysisController : ControllerBase
                 _context.Submissions.Add(submission);
                 await _context.SaveChangesAsync();
 
-                var flowgData = _parser.ParseFlowgorithmFile(content, fileName);
+                var flowgData = _parser.ParseFlowgorithmFile(content, originalFileName);
                 if (flowgData == null) continue;
 
                 var plagiarismAnalysis = _plagiarismService.AnalyzeSolution(flowgData);
@@ -202,6 +198,7 @@ public class AnalysisController : ControllerBase
                     IsFlagged = plagiarismAnalysis.PlagiarismScore > 60,
                     RiskLevel = DeterminRiskLevel(plagiarismAnalysis.PlagiarismScore)
                 };
+                analysisResult.ForensicAnalysis = CreateForensicAnalysis(flowgData);
 
                 foreach (var risk in plagiarismAnalysis.RiskIndicators)
                 {
@@ -520,7 +517,10 @@ public class AnalysisController : ControllerBase
                 FileModifiedDate = result.ForensicAnalysis.FileModifiedDate,
                 Author = result.ForensicAnalysis.Author,
                 SuspiciousMetadata = result.ForensicAnalysis.SuspiciousMetadata,
-                MetadataAnomalies = result.ForensicAnalysis.MetadataAnomalies
+                MetadataAnomalies = result.ForensicAnalysis.MetadataAnomalies,
+                AnomalyDetails = result.ForensicAnalysis.AnomalyDetails?
+                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList() ?? []
             };
         }
 
@@ -536,6 +536,86 @@ public class AnalysisController : ControllerBase
             < 80 => "High",
             _ => "Critical"
         };
+    }
+
+    private static (string studentId, string studentName) ParseStudentInfoFromFileName(string fileName)
+    {
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        var parts = nameWithoutExtension
+            .Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var studentId = parts.Length > 0 ? parts[0] : "Unknown";
+        var studentName = parts.Length switch
+        {
+            >= 3 => $"{parts[1]} {parts[2]}",
+            2 => parts[1],
+            _ => "Unknown"
+        };
+
+        return (studentId, studentName);
+    }
+
+    private static ForensicAnalysis? CreateForensicAnalysis(FlowgorithmData flowgData)
+    {
+        var hasCreatedDate = flowgData.CreatedDate != default;
+        var hasModifiedDate = flowgData.ModifiedDate != default;
+
+        if (!hasCreatedDate && !hasModifiedDate && string.IsNullOrWhiteSpace(flowgData.Author))
+            return null;
+
+        var findings = GetMetadataFindings(flowgData);
+        return new ForensicAnalysis
+        {
+            FileCreatedDate = flowgData.CreatedDate,
+            FileModifiedDate = flowgData.ModifiedDate,
+            Author = flowgData.Author,
+            SuspiciousMetadata = findings.Count > 0,
+            MetadataAnomalies = findings.Count,
+            AnomalyDetails = string.Join("; ", findings)
+        };
+    }
+
+    private static List<string> GetMetadataFindings(FlowgorithmData flowgData)
+    {
+        var findings = new List<string>();
+        var hasCreatedDate = flowgData.CreatedDate != default;
+        var hasModifiedDate = flowgData.ModifiedDate != default;
+
+        if (!hasCreatedDate && !hasModifiedDate)
+        {
+            findings.Add("Missing created and modified timestamp metadata");
+        }
+
+        if (hasCreatedDate && hasModifiedDate)
+        {
+            if (flowgData.ModifiedDate < flowgData.CreatedDate)
+            {
+                findings.Add("Modified timestamp is before created timestamp");
+            }
+            else
+            {
+                var editingMinutes = (flowgData.ModifiedDate - flowgData.CreatedDate).TotalMinutes;
+                if (editingMinutes < 1 && flowgData.ElementCount > 10)
+                {
+                    findings.Add($"Almost no recorded editing time for {flowgData.ElementCount} elements");
+                }
+                else if (editingMinutes < 10 && flowgData.ComplexityScore >= 60)
+                {
+                    findings.Add($"{flowgData.ComplexityScore} complexity recorded in {editingMinutes:F1} minutes");
+                }
+                else if (editingMinutes < 20 && flowgData.ComplexityScore >= 90)
+                {
+                    findings.Add($"{flowgData.ComplexityScore} complexity has a short {editingMinutes:F1} minute editing window");
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(flowgData.Author) && flowgData.ElementCount > 10)
+        {
+            findings.Add("Missing author metadata");
+        }
+
+        return findings;
     }
 
     private async Task AddCrossSubmissionFindingsAsync(
@@ -590,7 +670,7 @@ public class AnalysisController : ControllerBase
             });
 
             var severity = similarity >= 90 ? 5 : 3;
-            var riskType = similarity >= 90 ? "COPY_PASTE" : "SIMILARITY_MATCH";
+            var riskType = similarity >= 90 ? "HIGH_SIMILARITY_MATCH" : "SIMILARITY_MATCH";
             var matchedStudent = existingResult.Student?.Name ?? existingResult.Submission.FileName;
             var description = similarity >= 90
                 ? "Submission is highly similar to another student's file"
